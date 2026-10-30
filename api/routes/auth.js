@@ -1,4 +1,5 @@
 
+const authMiddleware = require('../middleware/authMiddleware');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -123,5 +124,43 @@ router.post('/login', async (req, res) => {
     });
   }
 });
+/* API xem thông tin cá nhân */
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Không tìm thấy tài khoản',
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Lấy thông tin cá nhân thành công',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi lấy thông tin cá nhân:', error.message);
+
+    return res.status(500).json({
+      message: 'Lỗi máy chủ khi lấy thông tin cá nhân',
+    });
+  }
+});
+
+/* API cập nhật thông tin cá nhân */
+router.put('/me', authMiddleware, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+
+    if (!name || !email || !name.trim() || !email.trim()) {
+      return res.status(400).json({
+        message: 'Vui lòng nhập đầy đủ họ tên và email',
+      });
+    }
 
 module.exports = router;
