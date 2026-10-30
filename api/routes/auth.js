@@ -163,4 +163,113 @@ router.put('/me', authMiddleware, async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: req.userId },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: 'Email đã được tài khoản khác sử dụng',
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      {
+        name: name.trim(),
+        email: normalizedEmail,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Không tìm thấy tài khoản',
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Cập nhật thông tin cá nhân thành công',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: 'Email đã được tài khoản khác sử dụng',
+      });
+    }
+
+    console.error('Lỗi cập nhật thông tin:', error.message);
+
+    return res.status(500).json({
+      message: 'Lỗi máy chủ khi cập nhật thông tin',
+    });
+  }
+});
+/* API doi mat khau */
+router.put('/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        message: 'Vui long nhap day du mat khau',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: 'Mat khau moi phai co it nhat 6 ky tu',
+      });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        message: 'Mat khau moi phai khac mat khau hien tai',
+      });
+    }
+
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Khong tim thay tai khoan',
+      });
+    }
+
+    const passwordMatch = await bcrypt.compare(
+      currentPassword,
+      user.password
+    );
+
+    if (!passwordMatch) {
+      return res.status(400).json({
+        message: 'Mat khau hien tai khong chinh xac',
+      });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Doi mat khau thanh cong',
+    });
+  } catch (error) {
+    console.error('Loi doi mat khau:', error.message);
+
+    return res.status(500).json({
+      message: 'Loi may chu khi doi mat khau',
+    });
+  }
+});
 module.exports = router;
