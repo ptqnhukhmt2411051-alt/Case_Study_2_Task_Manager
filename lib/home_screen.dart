@@ -1,8 +1,8 @@
-
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
+import 'screens/task_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -29,43 +29,75 @@ class HomeScreen extends StatelessWidget {
         centerTitle: true,
       ),
       body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.task_alt,
-              size: 80,
-              color: Colors.blue,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Chào mừng đến với Task Manager!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.task_alt,
+                size: 80,
+                color: Colors.blue,
               ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ProfileScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.person),
-              label: const Text('Thông tin cá nhân'),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () => handleLogout(context),
-              icon: const Icon(Icons.logout),
-              label: const Text('Đăng xuất'),
-            ),
-          ],
+              const SizedBox(height: 16),
+
+              const Text(
+                'Chào mừng đến với Task Manager!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TaskScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.task_alt),
+                  label: const Text('Quản lý công việc'),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ProfileScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.person),
+                  label: const Text('Thông tin cá nhân'),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => handleLogout(context),
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Đăng xuất'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
