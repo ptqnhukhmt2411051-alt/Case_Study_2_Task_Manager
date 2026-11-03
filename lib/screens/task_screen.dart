@@ -44,6 +44,15 @@ class _TaskScreenState extends State<TaskScreen>
 
   List<Task> _tasks = [];
 
+  // Tìm kiếm và lọc công việc
+  final TextEditingController _searchController =
+  TextEditingController();
+
+  String _searchKeyword = '';
+  String _selectedStatus = 'all';
+  String _selectedPriority = 'all';
+  String _selectedAssignee = 'all';
+
   @override
   void initState() {
     super.initState();
@@ -147,6 +156,31 @@ class _TaskScreenState extends State<TaskScreen>
       default:
         return _tasks;
     }
+  }
+
+// Tìm kiếm và lọc công việc
+  List<Task> _getFilteredTasks(String type) {
+    final tasks = _getTasksByType(type);
+
+    return tasks.where((task) {
+      final matchesName = task.title
+          .toLowerCase()
+          .contains(_searchKeyword.toLowerCase());
+
+      final matchesStatus = _selectedStatus == 'all' ||
+          task.status == _selectedStatus;
+
+      final matchesPriority = _selectedPriority == 'all' ||
+          task.priority == _selectedPriority;
+
+      final matchesAssignee = _selectedAssignee == 'all' ||
+          task.assignedTo == _selectedAssignee;
+
+      return matchesName &&
+          matchesStatus &&
+          matchesPriority &&
+          matchesAssignee;
+    }).toList();
   }
 
   // Mở màn hình thêm công việc
@@ -334,7 +368,7 @@ class _TaskScreenState extends State<TaskScreen>
 
   // Giao diện danh sách công việc
   Widget _buildTaskList(String type) {
-    final tasks = _getTasksByType(type);
+    final tasks = _getFilteredTasks(type);
 
     if (_isLoadingTasks) {
       return const Center(
@@ -393,15 +427,156 @@ class _TaskScreenState extends State<TaskScreen>
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadTasks,
-      child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: tasks.length,
-        itemBuilder: (context, index) {
-          return _buildTaskCard(tasks[index]);
-        },
-      ),
+    return Column(
+      children: [
+        // Ô tìm kiếm
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Tìm kiếm theo tên công việc...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchKeyword = '';
+                  });
+                },
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchKeyword = value.trim();
+              });
+            },
+          ),
+        ),
+
+        // Bộ lọc trạng thái
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DropdownButtonFormField<String>(
+            initialValue: _selectedStatus,
+            decoration: const InputDecoration(
+              labelText: 'Lọc theo trạng thái',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('Tất cả trạng thái')),
+              DropdownMenuItem(value: 'todo', child: Text('Chưa thực hiện')),
+              DropdownMenuItem(
+                  value: 'in_progress', child: Text('Đang thực hiện')),
+              DropdownMenuItem(
+                  value: 'completed', child: Text('Đã hoàn thành')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _selectedStatus = value ?? 'all';
+              });
+            },
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Bộ lọc ưu tiên
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DropdownButtonFormField<String>(
+            initialValue: _selectedPriority,
+            decoration: const InputDecoration(
+              labelText: 'Lọc theo mức độ ưu tiên',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('Tất cả mức ưu tiên')),
+              DropdownMenuItem(value: 'low', child: Text('Thấp')),
+              DropdownMenuItem(value: 'medium', child: Text('Trung bình')),
+              DropdownMenuItem(value: 'high', child: Text('Cao')),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _selectedPriority = value ?? 'all';
+              });
+            },
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Bộ lọc người phụ trách
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DropdownButtonFormField<String>(
+            initialValue: _selectedAssignee,
+            decoration: const InputDecoration(
+              labelText: 'Lọc theo người phụ trách',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem(
+                value: 'all',
+                child: Text('Tất cả người phụ trách'),
+              ),
+              ..._tasks
+                  .where((task) => task.assignedTo.isNotEmpty)
+                  .map((task) => task.assignedTo)
+                  .toSet()
+                  .map((id) =>
+                  DropdownMenuItem(
+                    value: id,
+                    child: Text(
+                      id,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _selectedAssignee = value ?? 'all';
+              });
+            },
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Danh sách kết quả
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadTasks,
+            child: tasks.isEmpty
+                ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 60),
+                Icon(
+                  Icons.search_off,
+                  size: 55,
+                  color: Colors.grey,
+                ),
+                SizedBox(height: 12),
+                Center(
+                  child: Text('Không tìm thấy công việc phù hợp'),
+                ),
+              ],
+            )
+                : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: tasks.length,
+              itemBuilder: (context, index) {
+                return _buildTaskCard(tasks[index]);
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -441,9 +616,11 @@ class _TaskScreenState extends State<TaskScreen>
     );
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+
+    @override
+    void dispose() {
+      _tabController.dispose();
+      _searchController.dispose();
+      super.dispose();
+    }
 }
