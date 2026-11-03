@@ -1,60 +1,137 @@
-import 'package:flutter/material.dart';
-import '../models/task_model.dart';
 
-class TaskDetailScreen extends StatelessWidget {
+import 'package:flutter/material.dart';
+
+import '../models/task_model.dart';
+import '../services/task_service.dart';
+import 'task_form_screen.dart';
+
+class TaskDetailScreen extends StatefulWidget {
   final Task task;
+  final String currentUserId;
 
   const TaskDetailScreen({
     super.key,
     required this.task,
+    required this.currentUserId,
   });
 
-  String statusText(String status) {
-    switch (status) {
-      case 'in_progress':
-        return 'Đang thực hiện';
-      case 'completed':
-        return 'Đã hoàn thành';
-      default:
-        return 'Chưa thực hiện';
+  @override
+  State<TaskDetailScreen> createState() => _TaskDetailScreenState();
+}
+
+class _TaskDetailScreenState extends State<TaskDetailScreen> {
+  final TaskService _taskService = TaskService();
+
+  bool _isDeleting = false;
+
+  // Chỉnh sửa công việc
+  Future<void> _editTask() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskFormScreen(
+          task: widget.task,
+          currentUserId: widget.currentUserId,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      Navigator.pop(context, true);
     }
   }
 
-  String priorityText(String priority) {
-    switch (priority) {
-      case 'high':
-        return 'Cao';
-      case 'medium':
-        return 'Trung bình';
-      default:
-        return 'Thấp';
+  // Xóa công việc
+  Future<void> _deleteTask() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa'),
+        content: const Text(
+          'Bạn có chắc chắn muốn xóa công việc này không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    try {
+      await _taskService.deleteTask(widget.task.id);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Xóa công việc thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isDeleting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể xóa công việc: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-  String formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
-
-  Widget infoItem(String label, String value, IconData icon) {
+  // Hiển thị một dòng thông tin
+  Widget _buildInfo(String label, String value, IconData icon) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.blue),
+          Icon(icon, color: Colors.blue, size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Colors.grey)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(value, style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                )),
+                Text(
+                  value.isEmpty ? 'Chưa có thông tin' : value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -63,8 +140,18 @@ class TaskDetailScreen extends StatelessWidget {
     );
   }
 
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Chưa thiết lập';
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final task = widget.task;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chi tiết công việc'),
@@ -72,32 +159,142 @@ class TaskDetailScreen extends StatelessWidget {
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              task.title,
-              style: const TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tên công việc',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      task.title,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Divider(height: 28),
+                    const Text(
+                      'Mô tả công việc',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      task.description.isEmpty
+                          ? 'Chưa có mô tả'
+                          : task.description,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Mô tả công việc',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            const SizedBox(height: 16),
+
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Thông tin công việc',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _buildInfo(
+                      'Người tạo',
+                      task.createdBy,
+                      Icons.person,
+                    ),
+                    _buildInfo(
+                      'Người được giao',
+                      task.assignedTo,
+                      Icons.assignment_ind,
+                    ),
+                    _buildInfo(
+                      'Trạng thái',
+                      task.status,
+                      Icons.flag,
+                    ),
+                    _buildInfo(
+                      'Mức độ ưu tiên',
+                      task.priority,
+                      Icons.priority_high,
+                    ),
+                    _buildInfo(
+                      'Ngày bắt đầu',
+                      _formatDate(task.startDate),
+                      Icons.calendar_today,
+                    ),
+                    _buildInfo(
+                      'Hạn hoàn thành',
+                      _formatDate(task.dueDate),
+                      Icons.event,
+                    ),
+                    _buildInfo(
+                      'Ngày tạo',
+                      _formatDate(task.createdAt),
+                      Icons.access_time,
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(task.description),
-            const Divider(height: 32),
-            infoItem('Người tạo', task.createdBy, Icons.person),
-            infoItem('Người phụ trách', task.assignedTo, Icons.assignment_ind),
-            infoItem('Trạng thái', statusText(task.status), Icons.flag),
-            infoItem('Mức độ ưu tiên', priorityText(task.priority), Icons.star),
-            infoItem('Ngày bắt đầu', formatDate(task.startDate), Icons.calendar_today),
-            infoItem('Hạn hoàn thành', formatDate(task.dueDate), Icons.event),
-            infoItem('Ngày tạo', formatDate(task.createdAt), Icons.access_time),
+            const SizedBox(height: 24),
+
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isDeleting ? null : _editTask,
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Chỉnh sửa'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isDeleting ? null : _deleteTask,
+                    icon: const Icon(Icons.delete),
+                    label: const Text('Xóa'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_isDeleting) ...[
+              const SizedBox(height: 16),
+              const Center(child: CircularProgressIndicator()),
+            ],
           ],
         ),
       ),

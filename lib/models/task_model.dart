@@ -1,14 +1,17 @@
+
 class Task {
   final String id;
   final String title;
   final String description;
   final String createdBy;
   final String assignedTo;
+  final List<String> acceptedBy;
+  final List<String> sharedWith;
   final String status;
   final String priority;
-  final DateTime startDate;
-  final DateTime dueDate;
-  final DateTime createdAt;
+  final DateTime? startDate;
+  final DateTime? dueDate;
+  final DateTime? createdAt;
 
   Task({
     required this.id,
@@ -16,34 +19,54 @@ class Task {
     required this.description,
     required this.createdBy,
     required this.assignedTo,
+    this.acceptedBy = const [],
+    this.sharedWith = const [],
     required this.status,
     required this.priority,
-    required this.startDate,
-    required this.dueDate,
-    required this.createdAt,
+    this.startDate,
+    this.dueDate,
+    this.createdAt,
   });
+
+  // Lấy ID dù dữ liệu là chuỗi hay đối tượng đã populate
+  static String _getId(dynamic value) {
+    if (value == null) return '';
+
+    if (value is Map) {
+      return (value['_id'] ?? value['id'] ?? '').toString();
+    }
+
+    return value.toString();
+  }
+
+  static List<String> _getIdList(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .map((item) => _getId(item))
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
+  static DateTime? _getDate(dynamic value) {
+    if (value == null || value.toString().isEmpty) return null;
+    return DateTime.tryParse(value.toString());
+  }
 
   factory Task.fromJson(Map<String, dynamic> json) {
     return Task(
-      id: json['_id']?.toString() ?? '',
-      title: json['title'] ?? '',
-      description: json['description'] ?? '',
-      createdBy: json['createdBy']?.toString() ?? '',
-      assignedTo: json['assignedTo']?.toString() ?? '',
-      status: json['status'] ?? 'todo',
-      priority: json['priority'] ?? 'medium',
-      startDate: DateTime.tryParse(
-        json['startDate']?.toString() ?? '',
-      ) ??
-          DateTime.now(),
-      dueDate: DateTime.tryParse(
-        json['dueDate']?.toString() ?? '',
-      ) ??
-          DateTime.now(),
-      createdAt: DateTime.tryParse(
-        json['createdAt']?.toString() ?? '',
-      ) ??
-          DateTime.now(),
+      id: _getId(json['_id'] ?? json['id']),
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      createdBy: _getId(json['createdBy']),
+      assignedTo: _getId(json['assignedTo']),
+      acceptedBy: _getIdList(json['acceptedBy']),
+      sharedWith: _getIdList(json['sharedWith']),
+      status: json['status']?.toString() ?? 'todo',
+      priority: json['priority']?.toString() ?? 'medium',
+      startDate: _getDate(json['startDate']),
+      dueDate: _getDate(json['dueDate']),
+      createdAt: _getDate(json['createdAt']),
     );
   }
 }
