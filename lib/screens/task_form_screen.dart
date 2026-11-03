@@ -18,6 +18,8 @@ class TaskFormScreen extends StatefulWidget {
 }
 
 class _TaskFormScreenState extends State<TaskFormScreen> {
+  String _selectedPriority = 'medium';
+
   final _formKey = GlobalKey<FormState>();
 
   final _titleController = TextEditingController();
@@ -27,7 +29,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   final TaskService _taskService = TaskService();
 
   String _status = 'todo';
-  String _priority = 'medium';
 
   DateTime? _startDate;
   DateTime? _dueDate;
@@ -40,6 +41,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   void initState() {
     super.initState();
 
+    if (widget.task != null) {
+      _selectedPriority = widget.task!.priority;
+    }
+
+
     final task = widget.task;
 
     if (task != null) {
@@ -48,7 +54,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       _assignedToController.text = task.assignedTo;
 
       _status = task.status;
-      _priority = task.priority;
+
       _startDate = task.startDate;
       _dueDate = task.dueDate;
     }
@@ -125,9 +131,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             ? null
             : _assignedToController.text.trim(),
         'status': _status,
-        'priority': _priority,
         'startDate': _startDate?.toIso8601String(),
         'dueDate': _dueDate?.toIso8601String(),
+        'priority': _selectedPriority,
       };
 
       if (_isEditing) {
@@ -218,6 +224,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       'Mô tả',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -225,10 +232,61 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     TextFormField(
                       controller: _descriptionController,
                       maxLines: 4,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Nhập mô tả công việc',
-                        border: OutlineInputBorder(),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.description),
+                        alignLabelWithHint: true,
                       ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+// Mức độ ưu tiên
+                    const Text(
+                      'Mức độ ưu tiên',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedPriority,
+                      decoration: InputDecoration(
+                        labelText: 'Chọn mức độ ưu tiên',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.flag,
+                          color: Colors.deepPurple,
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'low',
+                          child: Text('Thấp'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'medium',
+                          child: Text('Trung bình'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'high',
+                          child: Text('Cao'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedPriority = value;
+                          });
+                        }
+                      },
                     ),
 
                     const SizedBox(height: 20),
@@ -300,7 +358,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     const SizedBox(height: 8),
 
                     DropdownButtonFormField<String>(
-                      initialValue: _priority,
+                      initialValue: _selectedPriority,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                       ),
@@ -321,7 +379,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       onChanged: (value) {
                         if (value != null) {
                           setState(() {
-                            _priority = value;
+                            _selectedPriority = value;
                           });
                         }
                       },
