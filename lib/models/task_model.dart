@@ -69,6 +69,37 @@ class Task {
       createdAt: _getDate(json['createdAt']),
     );
   }
+  Map<String, dynamic> toJson() {
+    return {
+      '_id': id,
+      'title': title,
+      'description': description,
+      'createdBy': createdBy,
+      'assignedTo': assignedTo,
+      'acceptedBy': acceptedBy,
+      'sharedWith': sharedWith,
+      'status': status,
+      'priority': priority,
+      'startDate': startDate?.toIso8601String(),
+      'dueDate': dueDate?.toIso8601String(),
+      'createdAt': createdAt?.toIso8601String(),
+    };
+  }
+  String get startDateText {
+    if (startDate == null) return 'Chưa thiết lập';
+
+    return '${startDate!.day.toString().padLeft(2, '0')}/'
+        '${startDate!.month.toString().padLeft(2, '0')}/'
+        '${startDate!.year}';
+  }
+
+  String get dueDateText {
+    if (dueDate == null) return 'Chưa thiết lập';
+
+    return '${dueDate!.day.toString().padLeft(2, '0')}/'
+        '${dueDate!.month.toString().padLeft(2, '0')}/'
+        '${dueDate!.year}';
+  }
   String get statusText {
     switch (status) {
       case 'todo':
