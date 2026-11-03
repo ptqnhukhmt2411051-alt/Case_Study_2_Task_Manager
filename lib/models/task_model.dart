@@ -69,4 +69,16 @@ class Task {
       createdAt: _getDate(json['createdAt']),
     );
   }
+  String get statusText {
+    switch (status) {
+      case 'todo':
+        return 'Chưa thực hiện';
+      case 'in_progress':
+        return 'Đang thực hiện';
+      case 'completed':
+        return 'Đã hoàn thành';
+      default:
+        return 'Chưa thực hiện';
+    }
+  }
 }

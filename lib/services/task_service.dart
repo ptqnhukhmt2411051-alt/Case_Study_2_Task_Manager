@@ -137,6 +137,15 @@ class TaskService {
       throw Exception('Lỗi cập nhật công việc: $e');
     }
   }
+  // Cập nhật trạng thái công việc
+  Future<Task> updateTaskStatus(
+      String taskId,
+      String newStatus,
+      ) async {
+    return await updateTask(taskId, {
+      'status': newStatus,
+    });
+  }
   // Xóa công việc
   Future<void> deleteTask(String taskId) async {
     try {
