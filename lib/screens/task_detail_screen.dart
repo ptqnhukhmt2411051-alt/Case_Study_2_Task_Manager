@@ -23,6 +23,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TaskService _taskService = TaskService();
 
   bool _isDeleting = false;
+  bool _isUpdatingStatus = false;
+
+  late String _selectedStatus;
+
+  @override
+  void initState() {
+    super.initState();
+
+    const validStatuses = ['todo', 'in_progress', 'completed'];
+
+    _selectedStatus = validStatuses.contains(widget.task.status)
+        ? widget.task.status
+        : 'todo';
+  }
 
   // Chỉnh sửa công việc
   Future<void> _editTask() async {
@@ -98,6 +112,52 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Không thể xóa công việc: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  // Cập nhật trạng thái công việc
+  Future<void> _updateStatus() async {
+    if (_selectedStatus == widget.task.status) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Trạng thái chưa thay đổi'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUpdatingStatus = true;
+    });
+
+    try {
+      await _taskService.updateTaskStatus(
+        widget.task.id,
+        _selectedStatus,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cập nhật trạng thái thành công!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isUpdatingStatus = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể cập nhật trạng thái: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -231,10 +291,74 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       task.assignedTo,
                       Icons.assignment_ind,
                     ),
-                    _buildInfo(
-                      'Trạng thái',
-                      task.status,
-                      Icons.flag,
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      'Cập nhật trạng thái công việc',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedStatus,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.flag),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'todo',
+                          child: Text('Chưa thực hiện'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'in_progress',
+                          child: Text('Đang thực hiện'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'completed',
+                          child: Text('Đã hoàn thành'),
+                        ),
+                      ],
+                      onChanged: _isUpdatingStatus
+                          ? null
+                          : (value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedStatus = value;
+                          });
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isUpdatingStatus ? null : _updateStatus,
+                        icon: _isUpdatingStatus
+                            ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                            : const Icon(Icons.save),
+                        label: Text(
+                          _isUpdatingStatus ? 'Đang cập nhật...' : 'Lưu trạng thái',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
                     ),
                     _buildInfo(
                       'Mức độ ưu tiên',
