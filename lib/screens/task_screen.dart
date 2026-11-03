@@ -44,6 +44,9 @@ class _TaskScreenState extends State<TaskScreen>
 
   List<Task> _tasks = [];
 
+  // Tiêu chí sắp xếp công việc
+  String _sortBy = 'dueDate';
+
   // Tìm kiếm và lọc công việc
   final TextEditingController _searchController =
   TextEditingController();
@@ -183,6 +186,55 @@ class _TaskScreenState extends State<TaskScreen>
     }).toList();
   }
 
+  List<Task> _getSortedTasks(String type) {
+    final tasks = _getFilteredTasks(type);
+
+    switch (_sortBy) {
+      case 'dueDate':
+        tasks.sort((a, b) {
+          // Công việc chưa có hạn hoàn thành xếp xuống cuối
+          if (a.dueDate == null && b.dueDate == null) {
+            return 0;
+          }
+          if (a.dueDate == null) return 1;
+          if (b.dueDate == null) return -1;
+
+          return a.dueDate!.compareTo(b.dueDate!);
+        });
+        break;
+
+      case 'priority':
+        const priorityOrder = {
+          'high': 1,
+          'medium': 2,
+          'low': 3,
+        };
+
+        tasks.sort((a, b) {
+          return (priorityOrder[a.priority] ?? 4)
+              .compareTo(priorityOrder[b.priority] ?? 4);
+        });
+        break;
+
+      case 'createdAt':
+        tasks.sort((a, b) {
+          // Công việc chưa có thời gian tạo xếp xuống cuối
+          if (a.createdAt == null && b.createdAt == null) {
+            return 0;
+          }
+
+          if (a.createdAt == null) return 1;
+          if (b.createdAt == null) return -1;
+
+          // Công việc mới tạo hiển thị trước
+          return b.createdAt!.compareTo(a.createdAt!);
+        });
+        break;
+    }
+
+    return tasks;
+  }
+
   // Mở màn hình thêm công việc
   Future<void> _openAddTaskScreen() async {
     if (_currentUserId.isEmpty) {
@@ -199,9 +251,10 @@ class _TaskScreenState extends State<TaskScreen>
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => TaskFormScreen(
-          currentUserId: _currentUserId,
-        ),
+        builder: (_) =>
+            TaskFormScreen(
+              currentUserId: _currentUserId,
+            ),
       ),
     );
 
@@ -217,10 +270,11 @@ class _TaskScreenState extends State<TaskScreen>
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => TaskDetailScreen(
-          task: task,
-          currentUserId: _currentUserId,
-        ),
+        builder: (_) =>
+            TaskDetailScreen(
+              task: task,
+              currentUserId: _currentUserId,
+            ),
       ),
     );
 
@@ -365,11 +419,8 @@ class _TaskScreenState extends State<TaskScreen>
       ),
     );
   }
-
-  // Giao diện danh sách công việc
+// Hiển thị danh sách công việc theo từng tab
   Widget _buildTaskList(String type) {
-    final tasks = _getFilteredTasks(type);
-
     if (_isLoadingTasks) {
       return const Center(
         child: CircularProgressIndicator(),
@@ -378,54 +429,21 @@ class _TaskScreenState extends State<TaskScreen>
 
     if (_errorMessage != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.red,
-                size: 40,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _loadTasks,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (tasks.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _loadTasks,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(height: 130),
-            const Icon(
-              Icons.assignment_outlined,
-              size: 60,
-              color: Colors.grey,
-            ),
+            Text(_errorMessage!),
             const SizedBox(height: 12),
-            Center(
-              child: Text(
-                'Chưa có công việc ${_titles[_types.indexOf(type)]}',
-              ),
+            ElevatedButton(
+              onPressed: _loadTasks,
+              child: const Text('Thử lại'),
             ),
           ],
         ),
       );
     }
+
+    final tasks = _getSortedTasks(type);
 
     return Column(
       children: [
@@ -458,7 +476,7 @@ class _TaskScreenState extends State<TaskScreen>
           ),
         ),
 
-        // Bộ lọc trạng thái
+        // Lọc theo trạng thái
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonFormField<String>(
@@ -468,12 +486,22 @@ class _TaskScreenState extends State<TaskScreen>
               border: OutlineInputBorder(),
             ),
             items: const [
-              DropdownMenuItem(value: 'all', child: Text('Tất cả trạng thái')),
-              DropdownMenuItem(value: 'todo', child: Text('Chưa thực hiện')),
               DropdownMenuItem(
-                  value: 'in_progress', child: Text('Đang thực hiện')),
+                value: 'all',
+                child: Text('Tất cả trạng thái'),
+              ),
               DropdownMenuItem(
-                  value: 'completed', child: Text('Đã hoàn thành')),
+                value: 'todo',
+                child: Text('Chưa thực hiện'),
+              ),
+              DropdownMenuItem(
+                value: 'in_progress',
+                child: Text('Đang thực hiện'),
+              ),
+              DropdownMenuItem(
+                value: 'completed',
+                child: Text('Đã hoàn thành'),
+              ),
             ],
             onChanged: (value) {
               setState(() {
@@ -485,7 +513,7 @@ class _TaskScreenState extends State<TaskScreen>
 
         const SizedBox(height: 10),
 
-        // Bộ lọc ưu tiên
+        // Lọc theo mức độ ưu tiên
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonFormField<String>(
@@ -495,10 +523,22 @@ class _TaskScreenState extends State<TaskScreen>
               border: OutlineInputBorder(),
             ),
             items: const [
-              DropdownMenuItem(value: 'all', child: Text('Tất cả mức ưu tiên')),
-              DropdownMenuItem(value: 'low', child: Text('Thấp')),
-              DropdownMenuItem(value: 'medium', child: Text('Trung bình')),
-              DropdownMenuItem(value: 'high', child: Text('Cao')),
+              DropdownMenuItem(
+                value: 'all',
+                child: Text('Tất cả mức ưu tiên'),
+              ),
+              DropdownMenuItem(
+                value: 'low',
+                child: Text('Thấp'),
+              ),
+              DropdownMenuItem(
+                value: 'medium',
+                child: Text('Trung bình'),
+              ),
+              DropdownMenuItem(
+                value: 'high',
+                child: Text('Cao'),
+              ),
             ],
             onChanged: (value) {
               setState(() {
@@ -510,7 +550,7 @@ class _TaskScreenState extends State<TaskScreen>
 
         const SizedBox(height: 10),
 
-        // Bộ lọc người phụ trách
+        // Lọc theo người phụ trách
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonFormField<String>(
@@ -528,18 +568,52 @@ class _TaskScreenState extends State<TaskScreen>
                   .where((task) => task.assignedTo.isNotEmpty)
                   .map((task) => task.assignedTo)
                   .toSet()
-                  .map((id) =>
-                  DropdownMenuItem(
-                    value: id,
-                    child: Text(
-                      id,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  )),
+                  .map(
+                    (id) => DropdownMenuItem(
+                  value: id,
+                  child: Text(
+                    id,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ],
             onChanged: (value) {
               setState(() {
                 _selectedAssignee = value ?? 'all';
+              });
+            },
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Sắp xếp công việc
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DropdownButtonFormField<String>(
+            initialValue: _sortBy,
+            decoration: const InputDecoration(
+              labelText: 'Sắp xếp công việc',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'dueDate',
+                child: Text('Theo hạn hoàn thành'),
+              ),
+              DropdownMenuItem(
+                value: 'priority',
+                child: Text('Theo mức độ ưu tiên'),
+              ),
+              DropdownMenuItem(
+                value: 'createdAt',
+                child: Text('Theo thời gian tạo'),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _sortBy = value ?? 'dueDate';
               });
             },
           ),
@@ -554,16 +628,19 @@ class _TaskScreenState extends State<TaskScreen>
             child: tasks.isEmpty
                 ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              children: const [
-                SizedBox(height: 60),
-                Icon(
+              children: [
+                const SizedBox(height: 60),
+                const Icon(
                   Icons.search_off,
                   size: 55,
                   color: Colors.grey,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Center(
-                  child: Text('Không tìm thấy công việc phù hợp'),
+                  child: Text(
+                    'Không tìm thấy công việc trong mục '
+                        '${_titles[_types.indexOf(type)]}',
+                  ),
                 ),
               ],
             )
@@ -579,6 +656,7 @@ class _TaskScreenState extends State<TaskScreen>
       ],
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -615,6 +693,8 @@ class _TaskScreenState extends State<TaskScreen>
       ),
     );
   }
+
+
 
 
     @override
