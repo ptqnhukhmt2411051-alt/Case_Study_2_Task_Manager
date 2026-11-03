@@ -69,15 +69,22 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _selectDate(bool isStartDate) async {
+    final now = DateTime.now();
+
     final initialDate = isStartDate
-        ? (_startDate ?? DateTime.now())
-        : (_dueDate ?? _startDate ?? DateTime.now());
+        ? (_startDate ?? now)
+        : (_dueDate ?? _startDate ?? now);
 
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: DateTime(2020),
+      firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      helpText: isStartDate
+          ? 'Chọn ngày bắt đầu'
+          : 'Chọn hạn hoàn thành',
+      cancelText: 'Hủy',
+      confirmText: 'Xác nhận',
     );
 
     if (pickedDate == null) return;
@@ -86,6 +93,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       if (isStartDate) {
         _startDate = pickedDate;
 
+        // Nếu ngày bắt đầu mới sau hạn hoàn thành,
+        // xóa hạn hoàn thành để người dùng chọn lại.
         if (_dueDate != null &&
             _dueDate!.isBefore(pickedDate)) {
           _dueDate = null;
@@ -107,16 +116,21 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_dueDate != null &&
-        _startDate != null &&
-        _dueDate!.isBefore(_startDate!)) {
+    if (_startDate != null &&
+        _dueDate != null &&
+        DateUtils.dateOnly(_dueDate!)
+            .isBefore(DateUtils.dateOnly(_startDate!))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Hạn hoàn thành phải sau ngày bắt đầu'),
+          content: Text(
+            'Hạn hoàn thành không được trước ngày bắt đầu!',
+          ),
         ),
       );
       return;
     }
+
+
 
     setState(() {
       _isSaving = true;
@@ -349,43 +363,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
                     const SizedBox(height: 20),
 
-                    const Text(
-                      'Mức độ ưu tiên',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
 
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedPriority,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'low',
-                          child: Text('Thấp'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'medium',
-                          child: Text('Trung bình'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'high',
-                          child: Text('Cao'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _selectedPriority = value;
-                          });
-                        }
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
 
                     const Text(
                       'Ngày bắt đầu',

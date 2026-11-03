@@ -72,18 +72,23 @@ router.post('/', async (req, res) => {
       dueDate
     } = req.body;
 
-    if (!title || !createdBy || !assignedTo) {
+    if (!title || !createdBy) {
       return res.status(400).json({
-        message: 'Vui long nhap day du thong tin'
+        message: 'Vui long nhap tieu de cong viec'
       });
     }
 
-    if (!isValidId(createdBy) || !isValidId(assignedTo)) {
+    if (!isValidId(createdBy)) {
       return res.status(400).json({
-        message: 'ID nguoi dung khong hop le'
+        message: 'ID nguoi tao khong hop le'
       });
     }
 
+    if (assignedTo && !isValidId(assignedTo)) {
+      return res.status(400).json({
+        message: 'ID nguoi duoc giao khong hop le'
+      });
+    }
     const task = await Task.create({
       title,
       description,
@@ -251,6 +256,15 @@ router.put('/:id', async (req, res) => {
         updateData[field] = req.body[field];
       }
     });
+    if (
+      updateData.assignedTo !== undefined &&
+      updateData.assignedTo !== null &&
+      !isValidId(updateData.assignedTo)
+    ) {
+      return res.status(400).json({
+        message: 'ID nguoi duoc giao khong hop le'
+      });
+    }
 
     const task = await Task.findByIdAndUpdate(
       id,
