@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
 import 'login_screen.dart';
@@ -19,6 +20,32 @@ class HomeScreen extends StatelessWidget {
       ),
           (route) => false,
     );
+  }
+
+  // Mo man hinh quan ly cong viec va truyen ID nguoi dung
+  Future<void> openTaskScreen(BuildContext context) async {
+    try {
+
+      await AuthService().getCurrentUserId();
+
+      if (!context.mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const TaskScreen()
+          ),
+
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể lấy ID người dùng: $e'),
+        ),
+      );
+    }
   }
 
   @override
@@ -55,14 +82,7 @@ class HomeScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const TaskScreen(),
-                      ),
-                    );
-                  },
+                  onPressed: () => openTaskScreen(context),
                   icon: const Icon(Icons.task_alt),
                   label: const Text('Quản lý công việc'),
                 ),

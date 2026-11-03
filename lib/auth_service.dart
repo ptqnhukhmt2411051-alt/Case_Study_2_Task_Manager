@@ -1,14 +1,17 @@
 
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Android Emulator dung 10.0.2.2 de truy cap may tinh.
-// Neu chay tren Windows desktop, doi thanh localhost.
+// Android Emulator truy cap backend tren may tinh
+// Neu chay Windows Desktop, doi thanh http://localhost:3000
 const String baseUrl = 'http://10.0.2.2:3000';
 
 class AuthService {
-  // Dang ky tai khoan
+  // ==============================
+  // DANG KY TAI KHOAN
+  // ==============================
   Future<Map<String, dynamic>> register({
     required String name,
     required String email,
@@ -16,7 +19,9 @@ class AuthService {
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/auth/register'),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: jsonEncode({
         'name': name,
         'email': email,
@@ -24,30 +29,36 @@ class AuthService {
       }),
     );
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final data =
+    jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode == 201) {
       return data;
     }
 
-    throw Exception(data['message'] ?? 'Dang ky that bai');
+    throw Exception(data['message'] ?? 'Đăng ký thất bại');
   }
 
-  // Dang nhap va luu token
+  // ==============================
+  // DANG NHAP VA LUU TOKEN
+  // ==============================
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/api/auth/login'),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: jsonEncode({
         'email': email,
         'password': password,
       }),
     );
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final data =
+    jsonDecode(response.body) as Map<String, dynamic>;
 
     if (response.statusCode == 200) {
       final token = data['token'];
@@ -60,22 +71,28 @@ class AuthService {
       return data;
     }
 
-    throw Exception(data['message'] ?? 'Dang nhap that bai');
+    throw Exception(data['message'] ?? 'Đăng nhập thất bại');
   }
 
-  // Dang xuat: xoa token da luu
+  // ==============================
+  // DANG XUAT
+  // ==============================
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
   }
 
-  // Lay token hien tai neu co
+  // ==============================
+  // LAY TOKEN HIEN TAI
+  // ==============================
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
   }
 
-  // Lay thong tin nguoi dung hien tai
+  // ==============================
+  // LAY THONG TIN NGUOI DUNG
+  // ==============================
   Future<Map<String, dynamic>> getProfile() async {
     final token = await getToken();
 
@@ -103,7 +120,30 @@ class AuthService {
     );
   }
 
-  // Cap nhat thong tin ca nhan
+  // ==============================
+  // LAY ID NGUOI DUNG HIEN TAI
+  // ==============================
+  Future<String> getCurrentUserId() async {
+    final profile = await getProfile();
+
+    final dynamic userData = profile['user'] ?? profile;
+
+    if (userData is! Map) {
+      throw Exception('Dữ liệu người dùng không hợp lệ');
+    }
+
+    final id = userData['_id'] ?? userData['id'];
+
+    if (id == null || id.toString().isEmpty) {
+      throw Exception('Không tìm thấy ID người dùng');
+    }
+
+    return id.toString();
+  }
+
+  // ==============================
+  // CAP NHAT THONG TIN CA NHAN
+  // ==============================
   Future<Map<String, dynamic>> updateProfile({
     required String name,
     required String email,
@@ -138,6 +178,9 @@ class AuthService {
     );
   }
 
+  // ==============================
+  // DOI MAT KHAU
+  // ==============================
   Future<Map<String, dynamic>> changePassword({
     required String currentPassword,
     required String newPassword,
@@ -172,5 +215,3 @@ class AuthService {
     );
   }
 }
-
-
