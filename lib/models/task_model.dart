@@ -34,7 +34,7 @@ class Task {
   final String assignedToEmail;
   final List<TaskMember> assignedUsers;
   final List<String> acceptedBy;
-  final List<String> sharedWith;
+  final List<TaskMember> sharedWith;
   final String status;
   final String priority;
   final DateTime? startDate;
@@ -109,7 +109,7 @@ class Task {
           : '',
       assignedUsers: _getMembers(json['assignedUsers']),
       acceptedBy: _getIdList(json['acceptedBy']),
-      sharedWith: _getIdList(json['sharedWith']),
+      sharedWith: _getMembers(json['sharedWith']),
       status: json['status']?.toString() ?? 'todo',
       priority: json['priority']?.toString() ?? 'medium',
       startDate: _getDate(json['startDate']),
@@ -127,7 +127,7 @@ class Task {
       'assignedTo': assignedTo,
       'assignedUsers': assignedUsers.map((member) => member.id).toList(),
       'acceptedBy': acceptedBy,
-      'sharedWith': sharedWith,
+      'sharedWith': sharedWith.map((member) => member.id).toList(),
       'status': status,
       'priority': priority,
       'startDate': startDate?.toIso8601String(),

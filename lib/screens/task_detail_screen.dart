@@ -168,6 +168,142 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       );
     }
   }
+  Widget _buildPeopleSection() {
+    final task = widget.task;
+
+    // Danh sách người được giao
+    final assignedMembers = <TaskMember>[];
+
+    // Thêm người phụ trách chính
+    if (task.assignedTo.isNotEmpty) {
+      assignedMembers.add(
+        TaskMember(
+          id: task.assignedTo,
+          name: task.assignedToName,
+          email: task.assignedToEmail,
+        ),
+      );
+    }
+
+    // Thêm những người được giao khác, tránh trùng ID
+    for (final member in task.assignedUsers) {
+      if (member.id.isNotEmpty &&
+          !assignedMembers.any((item) => item.id == member.id)) {
+        assignedMembers.add(member);
+      }
+    }
+
+    final sharedMembers = task.sharedWith;
+
+    Widget memberTile(
+        TaskMember member, {
+          required IconData icon,
+          required Color color,
+          String? subtitle,
+        }) {
+      final displayName = member.name.trim().isNotEmpty
+          ? member.name
+          : 'Người dùng';
+
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.12),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(
+          displayName,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          subtitle ??
+              (member.email.isNotEmpty
+                  ? member.email
+                  : 'ID: ${member.id}'),
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.people_alt_outlined, color: Colors.blue),
+                SizedBox(width: 8),
+                Text(
+                  'Thành viên công việc',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            const Text(
+              'Người được giao',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+              ),
+            ),
+
+            if (assignedMembers.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Chưa có người được giao'),
+              )
+            else
+              ...assignedMembers.map(
+                    (member) => memberTile(
+                  member,
+                  icon: Icons.assignment_ind,
+                  color: Colors.blue,
+                  subtitle: member.id == task.assignedTo
+                      ? 'Người phụ trách chính'
+                      : null,
+                ),
+              ),
+
+            const Divider(height: 28),
+
+            const Text(
+              'Người được chia sẻ',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple,
+              ),
+            ),
+
+            if (sharedMembers.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Chưa chia sẻ công việc với ai'),
+              )
+            else
+              ...sharedMembers.map(
+                    (member) => memberTile(
+                  member,
+                  icon: Icons.share,
+                  color: Colors.deepPurple,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   Future<void> _updateStatus() async {
     if (_selectedStatus == widget.task.status) {
@@ -823,6 +959,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             _buildPrioritySection(),
 
             const SizedBox(height: 20),
+
+// Danh sách người được giao và người được chia sẻ
+            _buildPeopleSection(),
+
+            const SizedBox(height: 20),
+
 
 
             // Khu vực các nút chức năng
