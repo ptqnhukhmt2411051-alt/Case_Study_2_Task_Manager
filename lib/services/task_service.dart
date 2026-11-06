@@ -240,17 +240,17 @@ class TaskService {
     }
   }
 
-  // Chia sẻ công việc cho một người dùng.
+  // C: Chia sẻ công việc cho nhiều người bằng email.
   Future<void> shareTask({
     required String taskId,
-    required String recipientId,
+    required List<String> emails,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/tasks/$taskId/share'),
         headers: await _getHeaders(),
         body: jsonEncode({
-          'recipientId': recipientId,
+          'emails': emails,
         }),
       );
 
@@ -267,7 +267,6 @@ class TaskService {
       throw Exception('Lỗi chia sẻ công việc: $e');
     }
   }
-
   // Chấp nhận công việc được giao.
   Future<void> acceptTask(String taskId) async {
     try {

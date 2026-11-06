@@ -24,6 +24,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _isDeleting = false;
   bool _isUpdatingStatus = false;
   bool _isUpdatingPriority = false;
+  bool _isSharing = false;
 
   late String _selectedStatus;
   late String _selectedPriority;
@@ -92,10 +93,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => TaskFormScreen(
-          task: widget.task,
-          currentUserId: widget.currentUserId,
-        ),
+        builder: (context) =>
+            TaskFormScreen(
+              task: widget.task,
+              currentUserId: widget.currentUserId,
+            ),
       ),
     );
 
@@ -109,26 +111,27 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Future<void> _deleteTask() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xác nhận xóa'),
-        content: const Text(
-          'Bạn có chắc chắn muốn xóa công việc này không?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Xác nhận xóa'),
+            content: const Text(
+              'Bạn có chắc chắn muốn xóa công việc này không?',
             ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Xóa'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Xóa'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (confirm != true) return;
@@ -265,9 +268,96 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     return '$day/$month/${date.year}';
   }
 
+  // Chia sẻ công việc cho nhiều người bằng email.
+  Future<void> _shareTask() async {
+    final input = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return const _ShareTaskDialog();
+      },
+    );
+
+    if (!mounted) return;
+
+    if (input == null || input
+        .trim()
+        .isEmpty) {
+      return;
+    }
+
+    // Tách email theo dấu phẩy, chấm phẩy hoặc xuống dòng.
+    final emails = input
+        .split(RegExp(r'[,;\n]+'))
+        .map((email) => email.trim().toLowerCase())
+        .where((email) => email.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (emails.isEmpty) return;
+
+    // Kiểm tra định dạng email.
+    final emailRegex = RegExp(
+      r'^[\w.+-]+@[\w-]+(\.[\w-]+)+$',
+    );
+
+    final invalidEmails = emails
+        .where((email) => !emailRegex.hasMatch(email))
+        .toList();
+
+    if (invalidEmails.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Email không hợp lệ: ${invalidEmails.join(', ')}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSharing = true;
+    });
+
+    try {
+      await _taskService.shareTask(
+        taskId: widget.task.id,
+        emails: emails,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Đã chia sẻ công việc cho ${emails.length} người!',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Chia sẻ thất bại: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSharing = false;
+        });
+      }
+    }
+  }
+
   // Hiển thị một dòng thông tin kèm icon
-  Widget _buildInfo(
-      String label,
+  Widget _buildInfo(String label,
       String value,
       IconData icon, {
         Color color = Colors.blue,
@@ -354,11 +444,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   // Tiêu đề của khu vực chức năng
-  Widget _buildSectionHeader(
-      String title,
+  Widget _buildSectionHeader(String title,
       IconData icon,
-      Color color,
-      ) {
+      Color color,) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -725,37 +813,72 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 20),
 
-            // Nút chỉnh sửa và xóa
-            Row(
+
+            // Khu vực các nút chức năng
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isDeleting ? null : _editTask,
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Chỉnh sửa'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isDeleting ? null : _editTask,
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Chỉnh sửa'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isDeleting ? null : _deleteTask,
-                    icon: const Icon(Icons.delete),
-                    label: const Text('Xóa'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isDeleting ? null : _deleteTask,
+                        icon: const Icon(Icons.delete),
+                        label: const Text('Xóa'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
                       ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Nút chia sẻ công việc
+                OutlinedButton.icon(
+                  onPressed: _isSharing ? null : _shareTask,
+                  icon: _isSharing
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  )
+                      : const Icon(Icons.share),
+                  label: Text(
+                    _isSharing
+                        ? 'Đang chia sẻ...'
+                        : 'Chia sẻ công việc cho nhiều người',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
@@ -773,6 +896,79 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+// Hộp thoại nhập email chia sẻ công việc.
+class _ShareTaskDialog extends StatefulWidget {
+  const _ShareTaskDialog();
+
+  @override
+  State<_ShareTaskDialog> createState() =>
+      _ShareTaskDialogState();
+}
+
+class _ShareTaskDialogState extends State<_ShareTaskDialog> {
+  final TextEditingController _emailController =
+  TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Chia sẻ công việc'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Nhập email của những người bạn muốn chia sẻ công việc.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _emailController,
+            maxLines: 4,
+            keyboardType: TextInputType.multiline,
+            decoration: const InputDecoration(
+              hintText: 'Ví dụ:\nabc@gmail.com\ndef@gmail.com',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Có thể nhập nhiều email, cách nhau bằng dấu phẩy, '
+                'dấu chấm phẩy hoặc xuống dòng.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: const Text('Hủy'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(
+              context,
+              _emailController.text,
+            );
+          },
+          child: const Text('Chia sẻ'),
+        ),
+      ],
     );
   }
 }

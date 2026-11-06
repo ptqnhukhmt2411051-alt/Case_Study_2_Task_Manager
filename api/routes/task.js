@@ -450,21 +450,47 @@ router.post('/:id/accept', authMiddleware, async (req, res) => {
 });
 
 // =====================================================
-// CHIA SE CONG VIEC
+// =====================================================
+// C - CHIA SE CONG VIEC CHO NHIEU NGUOI
 // POST /api/tasks/:id/share
-// Body: { recipientId }
+// Body: { emails: ["user1@gmail.com", "user2@gmail.com"] }
 // =====================================================
 router.post('/:id/share', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { recipientId } = req.body;
+    const { emails } = req.body;
 
-    if (!isValidId(id) || !isValidId(recipientId)) {
+    // Kiem tra ID cong viec
+    if (!isValidId(id)) {
       return res.status(400).json({
-        message: 'ID khong hop le'
+        message: 'ID cong viec khong hop le'
       });
     }
 
+    // Kiem tra danh sach email
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({
+        message: 'Vui long nhap email nhung nguoi can chia se'
+      });
+    }
+
+    // Chuan hoa email va loai bo email trung lap
+    const normalizedEmails = [
+      ...new Set(
+        emails
+          .filter(email => typeof email === 'string')
+          .map(email => email.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    ];
+
+    if (normalizedEmails.length === 0) {
+      return res.status(400).json({
+        message: 'Danh sach email khong hop le'
+      });
+    }
+
+    // Tim cong viec
     const task = await Task.findById(id);
 
     if (!task) {
@@ -473,44 +499,86 @@ router.post('/:id/share', authMiddleware, async (req, res) => {
       });
     }
 
+    // Chi nguoi tao moi co quyen chia se
     if (String(task.createdBy) !== String(req.userId)) {
       return res.status(403).json({
         message: 'Chi nguoi tao moi duoc chia se cong viec'
       });
     }
 
-    if (String(recipientId) === String(req.userId)) {
+    // Khong cho phep chia se cho chinh minh
+    const creator = await User.findById(req.userId).select('email');
+
+    if (!creator) {
+      return res.status(404).json({
+        message: 'Khong tim thay tai khoan nguoi chia se'
+      });
+    }
+
+    if (
+      normalizedEmails.includes(
+        creator.email.trim().toLowerCase()
+      )
+    ) {
       return res.status(400).json({
         message: 'Khong the chia se cong viec cho chinh minh'
       });
     }
 
-    const recipient = await User.findById(recipientId);
+    // Tim cac tai khoan theo email
+    const recipients = await User.find({
+      email: { $in: normalizedEmails }
+    }).select('_id name email');
 
-    if (!recipient) {
+    // Kiem tra email khong ton tai
+    if (recipients.length !== normalizedEmails.length) {
+      const foundEmails = recipients.map(
+        user => user.email.trim().toLowerCase()
+      );
+
+      const notFoundEmails = normalizedEmails.filter(
+        email => !foundEmails.includes(email)
+      );
+
       return res.status(404).json({
-        message: 'Khong tim thay tai khoan duoc chia se'
+        message: 'Mot hoac nhieu email khong ton tai',
+        notFoundEmails
       });
     }
 
-    if (
-      !(task.sharedWith || []).some(
-        item => String(item) === String(recipientId)
-      )
-    ) {
-      task.sharedWith.push(recipientId);
-    }
+    // Them nguoi nhan vao danh sach sharedWith
+    const currentSharedIds = (task.sharedWith || []).map(
+      user => String(user)
+    );
+
+    let addedCount = 0;
+
+    recipients.forEach(user => {
+      const userId = String(user._id);
+
+      if (!currentSharedIds.includes(userId)) {
+        task.sharedWith.push(user._id);
+        currentSharedIds.push(userId);
+        addedCount++;
+      }
+    });
 
     await task.save();
 
+    // Lay lai cong viec kem thong tin tai khoan
     const result = await populateTask(
       Task.findById(id)
     );
 
     return res.status(200).json({
-      message: 'Chia se cong viec thanh cong',
+      message: addedCount > 0
+        ? 'Chia se cong viec thanh cong'
+        : 'Cong viec da duoc chia se cho cac tai khoan nay',
+      addedCount,
+      sharedCount: result.sharedWith.length,
       task: result
     });
+
   } catch (error) {
     return res.status(500).json({
       message: 'Loi chia se cong viec',
