@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+
 import '../models/task_model.dart';
 import '../services/task_service.dart';
 
@@ -18,16 +19,20 @@ class TaskFormScreen extends StatefulWidget {
 }
 
 class _TaskFormScreenState extends State<TaskFormScreen> {
-  String _selectedPriority = 'medium';
-
   final _formKey = GlobalKey<FormState>();
 
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _assignedToController = TextEditingController();
+
+  // C1: Danh sách email thành viên.
+  final _assignedEmailsController = TextEditingController();
+
+  // C2: Email người phụ trách chính.
+  final _primaryEmailController = TextEditingController();
 
   final TaskService _taskService = TaskService();
 
+  String _selectedPriority = 'medium';
   String _status = 'todo';
 
   DateTime? _startDate;
@@ -41,22 +46,41 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   void initState() {
     super.initState();
 
-    if (widget.task != null) {
-      _selectedPriority = widget.task!.priority;
-    }
-
-
     final task = widget.task;
 
     if (task != null) {
       _titleController.text = task.title;
       _descriptionController.text = task.description;
-      _assignedToController.text = task.assignedTo;
 
-      _status = task.status;
+      _selectedPriority = [
+        'low',
+        'medium',
+        'high',
+      ].contains(task.priority)
+          ? task.priority
+          : 'medium';
+
+      _status = [
+        'todo',
+        'in_progress',
+        'completed',
+      ].contains(task.status)
+          ? task.status
+          : 'todo';
 
       _startDate = task.startDate;
       _dueDate = task.dueDate;
+
+      // Hiển thị lại email các thành viên đã được giao.
+      final emails = task.assignedUsers
+          .map((member) => member.email.trim())
+          .where((email) => email.isNotEmpty)
+          .toList();
+
+      _assignedEmailsController.text = emails.join('\n');
+
+      // Hiển thị email người phụ trách chính.
+      _primaryEmailController.text = task.assignedToEmail;
     }
   }
 
@@ -64,8 +88,29 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _assignedToController.dispose();
+    _assignedEmailsController.dispose();
+    _primaryEmailController.dispose();
     super.dispose();
+  }
+
+  // Tách email theo dấu phẩy, dấu chấm phẩy hoặc xuống dòng.
+  List<String> _getAssignedEmails() {
+    final rawText = _assignedEmailsController.text;
+
+    final emails = rawText
+        .split(RegExp(r'[,;\n]+'))
+        .map((email) => email.trim().toLowerCase())
+        .where((email) => email.isNotEmpty)
+        .toSet()
+        .toList();
+
+    return emails;
+  }
+
+  bool _isValidEmail(String email) {
+    return RegExp(
+      r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
+    ).hasMatch(email);
   }
 
   Future<void> _selectDate(bool isStartDate) async {
@@ -93,10 +138,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       if (isStartDate) {
         _startDate = pickedDate;
 
-        // Nếu ngày bắt đầu mới sau hạn hoàn thành,
-        // xóa hạn hoàn thành để người dùng chọn lại.
         if (_dueDate != null &&
-            _dueDate!.isBefore(pickedDate)) {
+            DateUtils.dateOnly(_dueDate!)
+                .isBefore(DateUtils.dateOnly(pickedDate))) {
           _dueDate = null;
         }
       } else {
@@ -113,8 +157,52 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         '${date.year}';
   }
 
+  // Kiểm tra dữ liệu C1 và C2 trước khi lưu.
+  String? _validateAssignment() {
+    final emails = _getAssignedEmails();
+    final primaryEmail =
+    _primaryEmailController.text.trim().toLowerCase();
+
+    for (final email in emails) {
+      if (!_isValidEmail(email)) {
+        return 'Email không hợp lệ: $email';
+      }
+    }
+
+    if (emails.isEmpty && primaryEmail.isNotEmpty) {
+      return 'Bạn cần nhập thành viên trước khi chọn người phụ trách chính';
+    }
+
+    if (emails.isNotEmpty && primaryEmail.isEmpty) {
+      return 'Vui lòng nhập email người phụ trách chính';
+    }
+
+    if (primaryEmail.isNotEmpty && !_isValidEmail(primaryEmail)) {
+      return 'Email người phụ trách chính không hợp lệ';
+    }
+
+    if (primaryEmail.isNotEmpty &&
+        !emails.contains(primaryEmail)) {
+      return 'Người phụ trách chính phải nằm trong danh sách thành viên C1';
+    }
+
+    return null;
+  }
+
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final assignmentError = _validateAssignment();
+
+    if (assignmentError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(assignmentError),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     if (_startDate != null &&
         _dueDate != null &&
@@ -130,8 +218,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       return;
     }
 
-
-
     setState(() {
       _isSaving = true;
     });
@@ -141,19 +227,39 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
         'createdBy': widget.task?.createdBy ?? widget.currentUserId,
-        'assignedTo': _assignedToController.text.trim().isEmpty
-            ? null
-            : _assignedToController.text.trim(),
+
+        // Không gửi ID từ ô nhập cũ nữa.
+        // Việc giao thành viên được thực hiện qua API C1.
+        'assignedTo': null,
+
         'status': _status,
         'startDate': _startDate?.toIso8601String(),
         'dueDate': _dueDate?.toIso8601String(),
         'priority': _selectedPriority,
       };
 
+      late Task savedTask;
+
       if (_isEditing) {
-        await _taskService.updateTask(widget.task!.id, data);
+        savedTask = await _taskService.updateTask(
+          widget.task!.id,
+          data,
+        );
       } else {
-        await _taskService.createTask(data);
+        savedTask = await _taskService.createTask(data);
+      }
+
+      // C1: Giao công việc cho nhiều thành viên.
+      final emails = _getAssignedEmails();
+      final primaryEmail =
+      _primaryEmailController.text.trim().toLowerCase();
+
+      if (emails.isNotEmpty) {
+        await _taskService.assignUsers(
+          taskId: savedTask.id,
+          emails: emails,
+          primaryEmail: primaryEmail,
+        );
       }
 
       if (!mounted) return;
@@ -162,9 +268,10 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         SnackBar(
           content: Text(
             _isEditing
-                ? 'Cập nhật công việc thành công'
-                : 'Thêm công việc thành công',
+                ? 'Cập nhật công việc và phân công thành công!'
+                : 'Thêm công việc và phân công thành công!',
           ),
+          backgroundColor: Colors.green,
         ),
       );
 
@@ -175,6 +282,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Lỗi lưu công việc: $e'),
+          backgroundColor: Colors.red,
         ),
       );
     } finally {
@@ -184,6 +292,129 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         });
       }
     }
+  }
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.blue),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAssignmentSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle(
+              'C1 - Giao công việc cho nhiều người',
+              Icons.group_add,
+            ),
+
+            const SizedBox(height: 8),
+
+            Text(
+              'Nhập email các thành viên muốn giao công việc. '
+                  'Mỗi email nằm trên một dòng hoặc cách nhau bằng dấu phẩy.',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 13,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: _assignedEmailsController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText:
+                'Ví dụ:\n'
+                    'thanhvien1@gmail.com\n'
+                    'thanhvien2@gmail.com',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Padding(
+                  padding: EdgeInsets.only(bottom: 55),
+                  child: Icon(Icons.people),
+                ),
+                alignLabelWithHint: true,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            _buildSectionTitle(
+              'C2 - Chọn người phụ trách chính',
+              Icons.person_pin,
+            ),
+
+            const SizedBox(height: 8),
+
+            Text(
+              'Người phụ trách chính phải là một thành viên '
+                  'đã được nhập ở phần C1.',
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 13,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: _primaryEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                hintText: 'Nhập email người phụ trách chính',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(
+                  Icons.person,
+                  color: Colors.deepPurple,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Lưu ý: Người tạo công việc cần chọn một '
+                    'email trong danh sách C1 làm người phụ trách chính.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.blue,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -196,12 +427,10 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
-
       body: Form(
         key: _formKey,
         child: Column(
           children: [
-            // Phần nội dung có thể cuộn
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
@@ -210,9 +439,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   children: [
                     const Text(
                       'Tên công việc',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
 
@@ -224,8 +451,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         prefixIcon: Icon(Icons.task),
                       ),
                       validator: (value) {
-                        if (value == null ||
-                            value.trim().isEmpty) {
+                        if (value == null || value.trim().isEmpty) {
                           return 'Vui lòng nhập tên công việc';
                         }
                         return null;
@@ -258,7 +484,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
                     const SizedBox(height: 20),
 
-// Mức độ ưu tiên
                     const Text(
                       'Mức độ ưu tiên',
                       style: TextStyle(
@@ -305,31 +530,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
                     const SizedBox(height: 20),
 
-                    const Text(
-                      'ID người được giao',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    TextFormField(
-                      controller: _assignedToController,
-                      decoration: const InputDecoration(
-                        hintText:
-                        'Nhập MongoDB User ID (có thể để trống)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                    ),
+                    // Khu vực C1 và C2.
+                    _buildAssignmentSection(),
 
                     const SizedBox(height: 20),
 
                     const Text(
                       'Trạng thái',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
 
@@ -363,13 +571,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
                     const SizedBox(height: 20),
 
-
-
                     const Text(
                       'Ngày bắt đầu',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
 
                     ListTile(
@@ -386,9 +590,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
                     const Text(
                       'Hạn hoàn thành',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
 
                     ListTile(
@@ -407,7 +609,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
               ),
             ),
 
-            // Nút lưu luôn hiển thị phía dưới
+            // Nút lưu luôn hiển thị phía dưới.
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
@@ -427,9 +629,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     )
                         : const Icon(Icons.save),
                     label: Text(
-                      _isSaving
-                          ? 'Đang lưu...'
-                          : 'Lưu công việc',
+                      _isSaving ? 'Đang lưu...' : 'Lưu công việc',
                     ),
                   ),
                 ),

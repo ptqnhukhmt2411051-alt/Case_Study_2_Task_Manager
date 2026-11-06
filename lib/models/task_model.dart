@@ -1,3 +1,28 @@
+class TaskMember {
+  final String id;
+  final String name;
+  final String email;
+
+  const TaskMember({
+    required this.id,
+    this.name = '',
+    this.email = '',
+  });
+
+  factory TaskMember.fromJson(dynamic value) {
+    if (value is Map) {
+      return TaskMember(
+        id: (value['_id'] ?? value['id'] ?? '').toString(),
+        name: (value['name'] ?? '').toString(),
+        email: (value['email'] ?? '').toString(),
+      );
+    }
+
+    return TaskMember(
+      id: value?.toString() ?? '',
+    );
+  }
+}
 
 class Task {
   final String id;
@@ -5,6 +30,9 @@ class Task {
   final String description;
   final String createdBy;
   final String assignedTo;
+  final String assignedToName;
+  final String assignedToEmail;
+  final List<TaskMember> assignedUsers;
   final List<String> acceptedBy;
   final List<String> sharedWith;
   final String status;
@@ -13,13 +41,15 @@ class Task {
   final DateTime? dueDate;
   final DateTime? createdAt;
 
-
   Task({
     required this.id,
     required this.title,
     required this.description,
     required this.createdBy,
     required this.assignedTo,
+    this.assignedToName = '',
+    this.assignedToEmail = '',
+    this.assignedUsers = const [],
     this.acceptedBy = const [],
     this.sharedWith = const [],
     required this.status,
@@ -29,7 +59,6 @@ class Task {
     this.createdAt,
   });
 
-  // Lấy ID dù dữ liệu là chuỗi hay đối tượng đã populate
   static String _getId(dynamic value) {
     if (value == null) return '';
 
@@ -49,18 +78,36 @@ class Task {
         .toList();
   }
 
+  static List<TaskMember> _getMembers(dynamic value) {
+    if (value is! List) return [];
+
+    return value
+        .map((item) => TaskMember.fromJson(item))
+        .where((member) => member.id.isNotEmpty)
+        .toList();
+  }
+
   static DateTime? _getDate(dynamic value) {
     if (value == null || value.toString().isEmpty) return null;
     return DateTime.tryParse(value.toString());
   }
 
   factory Task.fromJson(Map<String, dynamic> json) {
+    final assignedToData = json['assignedTo'];
+
     return Task(
       id: _getId(json['_id'] ?? json['id']),
       title: json['title']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       createdBy: _getId(json['createdBy']),
-      assignedTo: _getId(json['assignedTo']),
+      assignedTo: _getId(assignedToData),
+      assignedToName: assignedToData is Map
+          ? (assignedToData['name'] ?? '').toString()
+          : '',
+      assignedToEmail: assignedToData is Map
+          ? (assignedToData['email'] ?? '').toString()
+          : '',
+      assignedUsers: _getMembers(json['assignedUsers']),
       acceptedBy: _getIdList(json['acceptedBy']),
       sharedWith: _getIdList(json['sharedWith']),
       status: json['status']?.toString() ?? 'todo',
@@ -70,6 +117,7 @@ class Task {
       createdAt: _getDate(json['createdAt']),
     );
   }
+
   Map<String, dynamic> toJson() {
     return {
       '_id': id,
@@ -77,6 +125,7 @@ class Task {
       'description': description,
       'createdBy': createdBy,
       'assignedTo': assignedTo,
+      'assignedUsers': assignedUsers.map((member) => member.id).toList(),
       'acceptedBy': acceptedBy,
       'sharedWith': sharedWith,
       'status': status,
@@ -86,6 +135,7 @@ class Task {
       'createdAt': createdAt?.toIso8601String(),
     };
   }
+
   String get startDateText {
     if (startDate == null) return 'Chưa thiết lập';
 
@@ -101,6 +151,7 @@ class Task {
         '${dueDate!.month.toString().padLeft(2, '0')}/'
         '${dueDate!.year}';
   }
+
   String get statusText {
     switch (status) {
       case 'todo':

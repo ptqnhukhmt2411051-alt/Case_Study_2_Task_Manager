@@ -77,8 +77,10 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     const user = await User.findOne({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
     });
 
     if (!user) {
@@ -99,7 +101,9 @@ router.post('/login', async (req, res) => {
     }
 
     if (!process.env.JWT_SECRET) {
-      throw new Error('Chua cau hinh JWT_SECRET trong .env');
+      return res.status(500).json({
+        message: 'Chua cau hinh JWT_SECRET',
+      });
     }
 
     const token = jwt.sign(
@@ -108,7 +112,7 @@ router.post('/login', async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    res.json({
+    return res.status(200).json({
       message: 'Dang nhap thanh cong',
       token,
       user: {
@@ -119,7 +123,8 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Loi dang nhap:', error.message);
-    res.status(500).json({
+
+    return res.status(500).json({
       message: 'Loi may chu khi dang nhap',
     });
   }
