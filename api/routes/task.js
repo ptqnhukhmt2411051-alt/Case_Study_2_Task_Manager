@@ -11,30 +11,60 @@ const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 // Lay thong tin cong viec kem cac tai khoan lien quan
 const populateTask = (query) => {
-  return query
+ return query
     .populate('createdBy', 'name email')
     .populate('assignedTo', 'name email')
     .populate('assignedUsers', 'name email')
     .populate('acceptedBy', 'name email')
-    .populate('sharedWith', 'name email');
+    .populate('sharedWith', 'name email')
+    .populate('sharedPermissions.user', 'name email');
 };
 
-// Kiem tra nguoi dang dang nhap co quyen xem cong viec
+
+
+
+// Lay ID ke ca khi du lieu da populate
+const getUserId = (value) => {
+  return String(value?._id ?? value);
+};
+
+// Kiem tra nguoi dung co quyen xem cong viec
 const canAccessTask = (task, userId) => {
   const id = String(userId);
 
   return (
-    String(task.createdBy) === id ||
-    String(task.assignedTo) === id ||
+    getUserId(task.createdBy) === id ||
+    getUserId(task.assignedTo) === id ||
     (task.assignedUsers || []).some(
-      user => String(user) === id
+      user => getUserId(user) === id
     ) ||
     (task.sharedWith || []).some(
-      user => String(user) === id
+      user => getUserId(user) === id
+    ) ||
+    (task.sharedPermissions || []).some(
+      item => getUserId(item.user) === id
     )
   );
 };
 
+// Lay quyen cua nguoi dung tren cong viec
+const getTaskPermission = (task, userId) => {
+  const id = String(userId);
+
+  if (getUserId(task.createdBy) === id) {
+    return 'owner';
+  }
+
+  const permission = (task.sharedPermissions || []).find(
+    item => getUserId(item.user) === id
+  );
+
+  if (permission) {
+    return permission.permission;
+  }
+
+  return 'viewer';
+};
 // =====================================================
 // TIM TAI KHOAN THEO EMAIL
 // GET /api/tasks/users/search
@@ -67,55 +97,234 @@ router.get('/users/search', authMiddleware, async (req, res) => {
 });
 
 // =====================================================
-// THEM CONG VIEC MOI
-// POST /api/tasks
+// C - CHIA SE CONG VIEC CHO NHIEU NGUOI
+// POST /api/tasks/:id/share
+// Body: { emails: [], permission: 'viewer' }
 // =====================================================
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/:id/share', authMiddleware, async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      status,
-      priority,
-      startDate,
-      dueDate
-    } = req.body;
+    const { id } = req.params;
+    const { emails, permission = 'viewer' } = req.body;
 
-    if (
-      !title ||
-      typeof title !== 'string' ||
-      !title.trim()
-    ) {
+    if (!isValidId(id)) {
       return res.status(400).json({
-        message: 'Vui long nhap ten cong viec'
+        message: 'ID cong viec khong hop le'
       });
     }
 
-    const newTask = await Task.create({
-      title: title.trim(),
-      description: description || '',
-      createdBy: req.userId,
-      assignedTo: null,
-      assignedUsers: [],
-      acceptedBy: [],
-      sharedWith: [],
-      status: status || 'todo',
-      priority: priority || 'medium',
-      startDate: startDate || null,
-      dueDate: dueDate || null
-    });
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({
+        message: 'Vui long nhap email nguoi can chia se'
+      });
+    }
 
-    const result = await populateTask(
-      Task.findById(newTask._id)
-    );
+    if (!['viewer', 'editor'].includes(permission)) {
+      return res.status(400).json({
+        message: 'Quyen chia se khong hop le'
+      });
+    }
 
-    return res.status(201).json({
-      message: 'Them cong viec thanh cong',
+    const normalizedEmails = [
+      ...new Set(
+        emails
+          .filter(email => typeof email === 'string')
+          .map(email => email.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    ];
+
+    if (normalizedEmails.length === 0) {
+      return res.status(400).json({
+        message: 'Danh sach email khong hop le'
+      });
+    }
+
+    const task = await Task.findById(id);
+
+    if (!task) {
+      return res.status(404).json({
+        message: 'Khong tim thay cong viec'
+      });
+    }
+
+    if (String(task.createdBy) !== String(req.userId)) {
+      return res.status(403).json({
+        message: 'Chi nguoi tao moi duoc chia se cong viec'
+      });
+    }
+
+    const creator = await User.findById(req.userId).select('email');
+
+    if (!creator) {
+      return res.status(404).json({
+        message: 'Khong tim thay tai khoan nguoi chia se'
+      });
+    }
+
+    if (normalizedEmails.includes(creator.email.toLowerCase())) {
+      return res.status(400).json({
+        message: 'Khong the chia se cong viec cho chinh minh'
+      });
+    }
+
+    const recipients = await User.find({
+      email: { $in: normalizedEmails }
+    }).select('_id name email');
+
+    if (recipients.length !== normalizedEmails.length) {
+      const foundEmails = recipients.map(
+        user => user.email.toLowerCase()
+      );
+
+      return res.status(404).json({
+        message: 'Mot hoac nhieu email khong ton tai',
+        notFoundEmails: normalizedEmails.filter(
+          email => !foundEmails.includes(email)
+        )
+      });
+    }
+
+    if (!task.sharedWith) {
+      task.sharedWith = [];
+    }
+
+    if (!task.sharedPermissions) {
+      task.sharedPermissions = [];
+    }
+
+    let addedCount = 0;
+
+    for (const user of recipients) {
+      const userId = String(user._id);
+
+      const alreadyShared = task.sharedWith.some(
+        item => getUserId(item) === userId
+      );
+
+      if (!alreadyShared) {
+        task.sharedWith.push(user._id);
+        addedCount++;
+      }
+
+      const existingPermission = task.sharedPermissions.find(
+        item => getUserId(item.user) === userId
+      );
+
+      if (!existingPermission) {
+        task.sharedPermissions.push({
+          user: user._id,
+          permission
+        });
+      }
+    }
+
+    await task.save();
+
+    const result = await populateTask(Task.findById(id));
+
+    return res.status(200).json({
+      message: 'Chia se cong viec thanh cong',
+      addedCount,
+      sharedCount: result.sharedWith.length,
       task: result
     });
+
   } catch (error) {
     return res.status(500).json({
-      message: 'Loi them cong viec',
+      message: 'Loi chia se cong viec',
+      error: error.message
+    });
+  }
+});
+// =====================================================
+// CAP NHAT QUYEN CHIA SE
+// PUT /api/tasks/:id/share-permission
+// Body: { email: "user@gmail.com", permission: "editor" }
+// =====================================================
+router.put('/:id/share-permission', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, permission } = req.body;
+
+    if (!isValidId(id)) {
+      return res.status(400).json({
+        message: 'ID cong viec khong hop le'
+      });
+    }
+
+    if (
+      typeof email !== 'string' ||
+      !email.trim() ||
+      !['viewer', 'editor'].includes(permission)
+    ) {
+      return res.status(400).json({
+        message: 'Email hoac quyen chia se khong hop le'
+      });
+    }
+
+    const task = await Task.findById(id);
+
+    if (!task) {
+      return res.status(404).json({
+        message: 'Khong tim thay cong viec'
+      });
+    }
+
+    if (String(task.createdBy) !== String(req.userId)) {
+      return res.status(403).json({
+        message: 'Chi nguoi tao moi duoc thay doi quyen chia se'
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.trim().toLowerCase()
+    }).select('_id name email');
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Khong tim thay tai khoan'
+      });
+    }
+
+    const isShared = (task.sharedWith || []).some(
+      item => getUserId(item) === String(user._id)
+    );
+
+    if (!isShared) {
+      return res.status(400).json({
+        message: 'Nguoi nay chua duoc chia se cong viec'
+      });
+    }
+
+    if (!task.sharedPermissions) {
+      task.sharedPermissions = [];
+    }
+
+    const existingPermission = task.sharedPermissions.find(
+      item => getUserId(item.user) === String(user._id)
+    );
+
+    if (existingPermission) {
+      existingPermission.permission = permission;
+    } else {
+      task.sharedPermissions.push({
+        user: user._id,
+        permission
+      });
+    }
+
+    await task.save();
+
+    const result = await populateTask(Task.findById(id));
+
+    return res.status(200).json({
+      message: 'Cap nhat quyen chia se thanh cong',
+      task: result
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Loi cap nhat quyen chia se',
       error: error.message
     });
   }
@@ -220,9 +429,14 @@ router.put('/:id/primary-assignee', authMiddleware, async (req, res) => {
       });
     }
 
-    if (String(task.createdBy) !== String(req.userId)) {
+    const isOwner =
+      String(task.createdBy) === String(req.userId);
+
+    const permission = getTaskPermission(task, req.userId);
+
+    if (!isOwner && permission !== 'editor') {
       return res.status(403).json({
-        message: 'Chi nguoi tao moi duoc chi dinh nguoi phu trach chinh'
+        message: 'Ban khong co quyen chinh sua cong viec'
       });
     }
 

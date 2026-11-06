@@ -241,9 +241,11 @@ class TaskService {
   }
 
   // C: Chia sẻ công việc cho nhiều người bằng email.
+  // đồng thời cấp quyền viewer hoặc editor.
   Future<void> shareTask({
     required String taskId,
     required List<String> emails,
+    required String permission,
   }) async {
     try {
       final response = await http.post(
@@ -251,6 +253,7 @@ class TaskService {
         headers: await _getHeaders(),
         body: jsonEncode({
           'emails': emails,
+          'permission': permission,
         }),
       );
 

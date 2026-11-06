@@ -269,19 +269,26 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   // Chia sẻ công việc cho nhiều người bằng email.
+  // Chia sẻ công việc và cấp quyền Viewer hoặc Editor.
   Future<void> _shareTask() async {
-    final input = await showDialog<String>(
+    final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) {
         return const _ShareTaskDialog();
       },
     );
 
-    if (!mounted) return;
+    if (!mounted || result == null) return;
 
-    if (input == null || input
-        .trim()
-        .isEmpty) {
+    final input = result['emails'] ?? '';
+    final permission = result['permission'] ?? 'viewer';
+
+    if (input.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập email người nhận'),
+        ),
+      );
       return;
     }
 
@@ -324,14 +331,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       await _taskService.shareTask(
         taskId: widget.task.id,
         emails: emails,
+        permission: permission,
       );
 
       if (!mounted) return;
 
+      final permissionText =
+      permission == 'viewer' ? 'Chỉ xem (Viewer)' : 'Chỉnh sửa (Editor)';
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Đã chia sẻ công việc cho ${emails.length} người!',
+            'Đã chia sẻ cho ${emails.length} người với quyền $permissionText!',
           ),
           backgroundColor: Colors.green,
         ),
@@ -900,6 +911,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 }
 // Hộp thoại nhập email chia sẻ công việc.
+// Hộp thoại chia sẻ công việc và chọn quyền truy cập.
 class _ShareTaskDialog extends StatefulWidget {
   const _ShareTaskDialog();
 
@@ -912,6 +924,8 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
   final TextEditingController _emailController =
   TextEditingController();
 
+  String _selectedPermission = 'viewer';
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -922,35 +936,127 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       scrollable: true,
-      title: const Text('Chia sẻ công việc'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      title: const Row(
         children: [
-          const Text(
-            'Nhập email của những người bạn muốn chia sẻ công việc.',
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _emailController,
-            maxLines: 4,
-            keyboardType: TextInputType.multiline,
-            decoration: const InputDecoration(
-              hintText: 'Ví dụ:\nabc@gmail.com\ndef@gmail.com',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.email_outlined),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Có thể nhập nhiều email, cách nhau bằng dấu phẩy, '
-                'dấu chấm phẩy hoặc xuống dòng.',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
+          Icon(Icons.share, color: Colors.blue),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text('Chia sẻ công việc'),
           ),
         ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Nhập email của những người bạn muốn chia sẻ công việc.',
+              style: TextStyle(fontSize: 14),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: _emailController,
+              maxLines: 4,
+              keyboardType: TextInputType.multiline,
+              decoration: const InputDecoration(
+                hintText: 'Ví dụ:\nabc@gmail.com\ndef@gmail.com',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email_outlined),
+                alignLabelWithHint: true,
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            const Text(
+              'Có thể nhập nhiều email, cách nhau bằng dấu phẩy, '
+                  'dấu chấm phẩy hoặc xuống dòng.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            const Divider(),
+
+            const SizedBox(height: 8),
+
+            const Text(
+              'Cấp quyền truy cập',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Quyền chỉ xem.
+            RadioListTile<String>(
+              value: 'viewer',
+              groupValue: _selectedPermission,
+              contentPadding: EdgeInsets.zero,
+              activeColor: Colors.blue,
+              secondary: const Icon(
+                Icons.visibility,
+                color: Colors.blue,
+              ),
+              title: const Text(
+                'Viewer - Chỉ xem',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text(
+                'Được xem thông tin công việc, không được chỉnh sửa.',
+                style: TextStyle(fontSize: 12),
+              ),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedPermission = value;
+                  });
+                }
+              },
+            ),
+
+            const Divider(height: 8),
+
+            // Quyền chỉnh sửa.
+            RadioListTile<String>(
+              value: 'editor',
+              groupValue: _selectedPermission,
+              contentPadding: EdgeInsets.zero,
+              activeColor: Colors.deepPurple,
+              secondary: const Icon(
+                Icons.edit,
+                color: Colors.deepPurple,
+              ),
+              title: const Text(
+                'Editor - Chỉnh sửa',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text(
+                'Được xem và chỉnh sửa thông tin công việc.',
+                style: TextStyle(fontSize: 12),
+              ),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedPermission = value;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -959,14 +1065,23 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
           },
           child: const Text('Hủy'),
         ),
-        ElevatedButton(
+
+        ElevatedButton.icon(
+          icon: const Icon(Icons.share),
           onPressed: () {
             Navigator.pop(
               context,
-              _emailController.text,
+              {
+                'emails': _emailController.text,
+                'permission': _selectedPermission,
+              },
             );
           },
-          child: const Text('Chia sẻ'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+          ),
+          label: const Text('Chia sẻ'),
         ),
       ],
     );
