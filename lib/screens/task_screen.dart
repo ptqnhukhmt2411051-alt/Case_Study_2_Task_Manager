@@ -135,29 +135,45 @@ class _TaskScreenState extends State<TaskScreen>
 
   // Lọc công việc theo từng danh sách
   List<Task> _getTasksByType(String type) {
+    if (_currentUserId.isEmpty) return [];
+
     switch (type) {
+    // Công việc do tài khoản hiện tại tạo
       case 'created':
-        return _tasks
-            .where((task) => task.createdBy.isNotEmpty)
-            .toList();
+        return _tasks.where((task) {
+          return task.createdBy == _currentUserId;
+        }).toList();
 
+    // Công việc được giao cho tài khoản hiện tại
+    // Bao gồm người phụ trách chính và thành viên được giao
       case 'assigned':
-        return _tasks
-            .where((task) => task.assignedTo.isNotEmpty)
-            .toList();
+        return _tasks.where((task) {
+          final isPrimaryAssignee =
+              task.assignedTo == _currentUserId;
 
+          final isAssignedMember = task.assignedUsers.any(
+                (member) => member.id == _currentUserId,
+          );
+
+          return isPrimaryAssignee || isAssignedMember;
+        }).toList();
+
+    // Công việc tài khoản hiện tại đã chấp nhận
       case 'accepted':
-        return _tasks
-            .where((task) => task.acceptedBy.isNotEmpty)
-            .toList();
+        return _tasks.where((task) {
+          return task.acceptedBy.contains(_currentUserId);
+        }).toList();
 
+    // Công việc được chia sẻ cho tài khoản hiện tại
       case 'shared':
-        return _tasks
-            .where((task) => task.sharedWith.isNotEmpty)
-            .toList();
+        return _tasks.where((task) {
+          return task.sharedWith.any(
+                (member) => member.id == _currentUserId,
+          );
+        }).toList();
 
       default:
-        return _tasks;
+        return [];
     }
   }
 
@@ -177,8 +193,10 @@ class _TaskScreenState extends State<TaskScreen>
           task.priority == _selectedPriority;
 
       final matchesAssignee = _selectedAssignee == 'all' ||
-          task.assignedTo == _selectedAssignee;
-
+          task.assignedTo == _selectedAssignee ||
+          task.assignedUsers.any(
+                (member) => member.id == _selectedAssignee,
+          );
       return matchesName &&
           matchesStatus &&
           matchesPriority &&
@@ -235,6 +253,7 @@ class _TaskScreenState extends State<TaskScreen>
     return tasks;
   }
 
+
   // Mở màn hình thêm công việc
   Future<void> _openAddTaskScreen() async {
     if (_currentUserId.isEmpty) {
@@ -263,6 +282,158 @@ class _TaskScreenState extends State<TaskScreen>
     if (result == true) {
       await _loadTasks();
     }
+  }
+  // Thống kê tiến độ công việc
+  Widget _buildProgressSummary() {
+    final total = _tasks.length;
+
+    final todoCount = _tasks
+        .where((task) => task.status == 'todo')
+        .length;
+
+    final inProgressCount = _tasks
+        .where((task) => task.status == 'in_progress')
+        .length;
+
+    final completedCount = _tasks
+        .where((task) => task.status == 'completed')
+        .length;
+
+    final progress = total == 0
+        ? 0.0
+        : completedCount / total;
+
+    Widget buildItem(
+        String title,
+        int count,
+        Color color,
+        IconData icon,
+        ) {
+      return Expanded(
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 25),
+            const SizedBox(height: 6),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.analytics_outlined,
+                  color: Colors.blue,
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Tổng quan tiến độ công việc',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                buildItem(
+                  'Chưa thực hiện',
+                  todoCount,
+                  Colors.blue,
+                  Icons.pending_actions,
+                ),
+                buildItem(
+                  'Đang thực hiện',
+                  inProgressCount,
+                  Colors.orange,
+                  Icons.autorenew,
+                ),
+                buildItem(
+                  'Hoàn thành',
+                  completedCount,
+                  Colors.green,
+                  Icons.check_circle_outline,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Tỷ lệ hoàn thành',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  '${(progress * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 9,
+                backgroundColor: Colors.grey.shade300,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Colors.green,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            Text(
+              'Tổng cộng $total công việc',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Mở màn hình chi tiết công việc
@@ -447,6 +618,8 @@ class _TaskScreenState extends State<TaskScreen>
 
     return Column(
       children: [
+        // Thống kê tiến độ
+        _buildProgressSummary(),
         // Ô tìm kiếm
         Padding(
           padding: const EdgeInsets.all(12),
