@@ -1,4 +1,3 @@
-
 const jwt = require('jsonwebtoken');
 
 function authMiddleware(req, res, next) {
@@ -21,9 +20,26 @@ function authMiddleware(req, res, next) {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.userId = decoded.userId;
+    // Lấy ID từ payload của JWT
+    const userId = decoded.userId || decoded.id || decoded._id;
+
+    if (!userId) {
+      return res.status(401).json({
+        message: 'Token không chứa ID người dùng',
+      });
+    }
+
+    // Gán thông tin người dùng cho request
+    req.userId = String(userId);
+    req.user = {
+      id: String(userId),
+      _id: String(userId),
+    };
+
     next();
   } catch (error) {
+    console.error('LỖI AUTH:', error);
+
     return res.status(401).json({
       message: 'Token không hợp lệ hoặc đã hết hạn',
     });

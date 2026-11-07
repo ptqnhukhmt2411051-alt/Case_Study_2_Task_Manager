@@ -876,38 +876,105 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // XOA CONG VIEC
 // DELETE /api/tasks/:id
 // =====================================================
-router.delete('/:id', authMiddleware, async (req, res) => {
+// Thu hồi quyền truy cập của người được chia sẻ
+router.delete('/:id/share', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const { email } = req.body;
 
-    if (!isValidId(id)) {
+    // Kiểm tra ID công việc
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
-        message: 'ID cong viec khong hop le'
+        message: 'ID công việc không hợp lệ'
       });
     }
 
+    // Kiểm tra email
+    if (typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({
+        message: 'Vui lòng cung cấp email người cần thu hồi quyền'
+      });
+    }
+
+    // Lấy ID người đang đăng nhập
+    const userId = String(req.userId || req.user?.id || req.user?._id || '');
+
+    if (!userId) {
+      return res.status(401).json({
+        message: 'Không xác định được tài khoản đăng nhập'
+      });
+    }
+
+    // Hàm lấy ID, hỗ trợ cả ObjectId và object đã populate
+    const getId = (value) => {
+      if (!value) return '';
+      return String(value._id || value.id || value);
+    };
+
+    // Tìm công việc
     const task = await Task.findById(id);
 
     if (!task) {
       return res.status(404).json({
-        message: 'Khong tim thay cong viec'
+        message: 'Không tìm thấy công việc'
       });
     }
 
-    if (String(task.createdBy) !== String(req.userId)) {
+    // Chỉ người tạo công việc mới được thu hồi quyền
+    if (getId(task.createdBy) !== userId) {
       return res.status(403).json({
-        message: 'Ban khong co quyen xoa cong viec nay'
+        message: 'Bạn không có quyền thu hồi truy cập'
       });
     }
 
-    await Task.findByIdAndDelete(id);
+    // Tìm người dùng theo email
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail
+    }).select('_id name email');
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Không tìm thấy người dùng'
+      });
+    }
+
+    const targetUserId = String(user._id);
+
+    // Kiểm tra người này có được chia sẻ công việc không
+    const isShared = (task.sharedWith || []).some(
+      item => getId(item) === targetUserId
+    );
+
+    if (!isShared) {
+      return res.status(400).json({
+        message: 'Người dùng chưa được chia sẻ công việc'
+      });
+    }
+
+    // Xóa người dùng khỏi danh sách chia sẻ
+    task.sharedWith = (task.sharedWith || []).filter(
+      item => getId(item) !== targetUserId
+    );
+
+    // Xóa quyền Viewer / Editor
+    task.sharedPermissions = (task.sharedPermissions || []).filter(
+      item => getId(item.user) !== targetUserId
+    );
+
+    // Lưu vào MongoDB
+    await task.save();
 
     return res.status(200).json({
-      message: 'Xoa cong viec thanh cong'
+      message: 'Đã thu hồi quyền truy cập thành công'
     });
+
   } catch (error) {
+    console.error('LỖI THU HỒI QUYỀN:', error);
+
     return res.status(500).json({
-      message: 'Loi xoa cong viec',
+      message: 'Lỗi máy chủ khi thu hồi quyền truy cập',
       error: error.message
     });
   }

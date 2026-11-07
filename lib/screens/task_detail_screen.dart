@@ -26,12 +26,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool _isUpdatingPriority = false;
   bool _isSharing = false;
 
+  late List<TaskMember> _sharedMembers;
+  String? _revokingEmail;
+
+
   late String _selectedStatus;
   late String _selectedPriority;
 
   @override
   void initState() {
     super.initState();
+
+    _sharedMembers = List<TaskMember>.from(widget.task.sharedWith);
 
     const validStatuses = ['todo', 'in_progress', 'completed'];
     const validPriorities = ['low', 'medium', 'high'];
@@ -168,6 +174,94 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       );
     }
   }
+  // Hàm thu hồi quyền truy cập
+  // Hàm thu hồi quyền truy cập
+  Future<void> _revokeShareAccess(String email) async {
+    if (_revokingEmail != null) return;
+
+    final normalizedEmail = email.trim().toLowerCase();
+
+    if (normalizedEmail.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tìm thấy email người cần thu hồi quyền'),
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Thu hồi quyền truy cập'),
+        content: Text(
+          'Bạn có chắc muốn thu hồi quyền của $normalizedEmail không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Thu hồi'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() {
+      _revokingEmail = normalizedEmail;
+    });
+
+    try {
+      await _taskService.revokeShareAccess(
+        taskId: widget.task.id,
+        email: normalizedEmail,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _sharedMembers.removeWhere(
+              (member) =>
+          member.email.trim().toLowerCase() == normalizedEmail,
+        );
+
+        _revokingEmail = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã thu hồi quyền truy cập thành công'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _revokingEmail = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Thu hồi quyền thất bại: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+
   Widget _buildPeopleSection() {
     final task = widget.task;
 
@@ -193,8 +287,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       }
     }
 
-    final sharedMembers = task.sharedWith;
+    // Danh sách người được chia sẻ
+    final sharedMembers = _sharedMembers;
 
+    // Widget hiển thị từng thành viên
     Widget memberTile(
         TaskMember member, {
           required IconData icon,
@@ -208,7 +304,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       return ListTile(
         contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.12),
+          backgroundColor: color.withValues(alpha: 0.12),
           child: Icon(icon, color: color),
         ),
         title: Text(
@@ -291,18 +387,157 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 child: Text('Chưa chia sẻ công việc với ai'),
               )
             else
-              ...sharedMembers.map(
-                    (member) => memberTile(
-                  member,
-                  icon: Icons.share,
-                  color: Colors.deepPurple,
-                ),
-              ),
+              ...sharedMembers.map((member) {
+                final email = member.email.trim();
+
+                return Column(
+                  children: [
+                    memberTile(
+                      member,
+                      icon: Icons.share,
+                      color: Colors.deepPurple,
+                    ),
+
+                    if (email.isNotEmpty)
+                      Row(
+                        children: [
+                          const Spacer(),
+
+                          // Nút thu hồi quyền
+                          IconButton(
+                            tooltip: 'Thu hồi quyền',
+                            icon: _revokingEmail == email.toLowerCase()
+                                ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                                : const Icon(
+                              Icons.person_remove_outlined,
+                              color: Colors.red,
+                            ),
+                            onPressed: _revokingEmail != null
+                                ? null
+                                : () {
+                              _revokeShareAccess(email);
+                            },
+                          ),
+
+                          // Nút thay đổi quyền Viewer / Editor
+                          IconButton(
+                            tooltip: 'Thay đổi quyền',
+                            icon: const Icon(
+                              Icons.edit_outlined,
+                              color: Colors.blue,
+                            ),
+                            onPressed: _revokingEmail != null
+                                ? null
+                                : () {
+                              _changeSharePermission(email);
+                            },
+                          ),
+                        ],
+                      ),
+                  ],
+                );
+              }),
           ],
         ),
       ),
     );
   }
+
+
+
+  Future<void> _changeSharePermission(String email) async {
+    String selectedPermission = 'viewer';
+
+    final permission = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Thay đổi quyền truy cập'),
+              content: RadioGroup<String>(
+                groupValue: selectedPermission,
+                onChanged: (String? value) {
+                  if (value != null) {
+                    setDialogState(() {
+                      selectedPermission = value;
+                    });
+                  }
+                },
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      title: Text('Viewer - Chỉ xem'),
+                      value: 'viewer',
+                    ),
+                    RadioListTile<String>(
+                      title: Text('Editor - Chỉnh sửa'),
+                      value: 'editor',
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Hủy'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(
+                      dialogContext,
+                      selectedPermission,
+                    );
+                  },
+                  child: const Text('Lưu'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (permission == null) return;
+
+    try {
+      await _taskService.updateSharePermission(
+        taskId: widget.task.id,
+        email: email,
+        permission: permission,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã thay đổi quyền truy cập thành công'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Không thể thay đổi quyền: $e',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
 
 
   Future<void> _updateStatus() async {
@@ -832,7 +1067,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             tooltip: 'Trang chủ',
             icon: const Icon(Icons.home),
             onPressed: () {
-              Navigator.popUntil(context, (route) => route.isFirst);
+              Navigator.popUntil(
+                context,
+                    (route) => route.isFirst,
+              );
             },
           ),
         ],
@@ -952,20 +1190,20 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
             const SizedBox(height: 18),
 
+            // Cập nhật trạng thái
             _buildStatusSection(),
 
             const SizedBox(height: 16),
 
+            // Cập nhật mức độ ưu tiên
             _buildPrioritySection(),
 
             const SizedBox(height: 20),
 
-// Danh sách người được giao và người được chia sẻ
+            // Danh sách người được giao và người được chia sẻ
             _buildPeopleSection(),
 
             const SizedBox(height: 20),
-
-
 
             // Khu vực các nút chức năng
             Column(
@@ -975,13 +1213,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: _isDeleting ? null : _editTask,
+                        onPressed:
+                        _isDeleting ? null : _editTask,
                         icon: const Icon(Icons.edit),
                         label: const Text('Chỉnh sửa'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 15,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -990,15 +1231,19 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ),
 
                     const SizedBox(width: 12),
+
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: _isDeleting ? null : _deleteTask,
+                        onPressed:
+                        _isDeleting ? null : _deleteTask,
                         icon: const Icon(Icons.delete),
                         label: const Text('Xóa'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 15,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -1029,7 +1274,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.blue,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 15,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -1037,30 +1284,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 ),
               ],
             ),
-
-            if (_isDeleting) ...[
-              const SizedBox(height: 16),
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
-            ],
-
-            const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
 }
-// Hộp thoại nhập email chia sẻ công việc.
-// Hộp thoại chia sẻ công việc và chọn quyền truy cập.
+
+// =====================================================
+// WIDGET HỘP THOẠI CHIA SẺ CÔNG VIỆC
+// =====================================================
+
 class _ShareTaskDialog extends StatefulWidget {
-  const _ShareTaskDialog();
+  const _ShareTaskDialog({super.key});
 
   @override
   State<_ShareTaskDialog> createState() =>
       _ShareTaskDialogState();
 }
+
+// =====================================================
+// GIAO DIỆN HỘP THOẠI CHIA SẺ VÀ CHỌN QUYỀN
+// =====================================================
 
 class _ShareTaskDialogState extends State<_ShareTaskDialog> {
   final TextEditingController _emailController =
@@ -1081,6 +1326,7 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
       ),
+
       title: const Row(
         children: [
           Icon(Icons.share, color: Colors.blue),
@@ -1090,6 +1336,7 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
           ),
         ],
       ),
+
       content: SizedBox(
         width: 400,
         child: Column(
@@ -1142,64 +1389,68 @@ class _ShareTaskDialogState extends State<_ShareTaskDialog> {
 
             const SizedBox(height: 10),
 
-            // Quyền chỉ xem.
-            RadioListTile<String>(
-              value: 'viewer',
+            // Nhóm lựa chọn quyền truy cập
+            RadioGroup<String>(
               groupValue: _selectedPermission,
-              contentPadding: EdgeInsets.zero,
-              activeColor: Colors.blue,
-              secondary: const Icon(
-                Icons.visibility,
-                color: Colors.blue,
-              ),
-              title: const Text(
-                'Viewer - Chỉ xem',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: const Text(
-                'Được xem thông tin công việc, không được chỉnh sửa.',
-                style: TextStyle(fontSize: 12),
-              ),
-              onChanged: (value) {
+              onChanged: (String? value) {
                 if (value != null) {
                   setState(() {
                     _selectedPermission = value;
                   });
                 }
               },
-            ),
+              child: Column(
+                children: [
+                  // Quyền Viewer
+                  RadioListTile<String>(
+                    value: 'viewer',
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: Colors.blue,
+                    secondary: const Icon(
+                      Icons.visibility,
+                      color: Colors.blue,
+                    ),
+                    title: const Text(
+                      'Viewer - Chỉ xem',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Được xem thông tin công việc, không được chỉnh sửa.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
 
-            const Divider(height: 8),
+                  const Divider(height: 8),
 
-            // Quyền chỉnh sửa.
-            RadioListTile<String>(
-              value: 'editor',
-              groupValue: _selectedPermission,
-              contentPadding: EdgeInsets.zero,
-              activeColor: Colors.deepPurple,
-              secondary: const Icon(
-                Icons.edit,
-                color: Colors.deepPurple,
+                  // Quyền Editor
+                  RadioListTile<String>(
+                    value: 'editor',
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: Colors.deepPurple,
+                    secondary: const Icon(
+                      Icons.edit,
+                      color: Colors.deepPurple,
+                    ),
+                    title: const Text(
+                      'Editor - Chỉnh sửa',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Được xem và chỉnh sửa thông tin công việc.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
               ),
-              title: const Text(
-                'Editor - Chỉnh sửa',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: const Text(
-                'Được xem và chỉnh sửa thông tin công việc.',
-                style: TextStyle(fontSize: 12),
-              ),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _selectedPermission = value;
-                  });
-                }
-              },
             ),
           ],
         ),
       ),
+
       actions: [
         TextButton(
           onPressed: () {

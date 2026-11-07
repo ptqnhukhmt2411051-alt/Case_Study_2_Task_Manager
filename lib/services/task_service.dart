@@ -63,9 +63,10 @@ class TaskService {
 
       final tasks = decodedData
           .map<Task>(
-            (json) => Task.fromJson(
-          Map<String, dynamic>.from(json),
-        ),
+            (json) =>
+            Task.fromJson(
+              Map<String, dynamic>.from(json),
+            ),
       )
           .toList();
 
@@ -138,10 +139,8 @@ class TaskService {
   }
 
   // Cập nhật công việc.
-  Future<Task> updateTask(
-      String taskId,
-      Map<String, dynamic> data,
-      ) async {
+  Future<Task> updateTask(String taskId,
+      Map<String, dynamic> data,) async {
     try {
       final response = await http.put(
         Uri.parse('$baseUrl/api/tasks/$taskId'),
@@ -173,10 +172,8 @@ class TaskService {
   }
 
   // Cập nhật trạng thái công việc.
-  Future<Task> updateTaskStatus(
-      String taskId,
-      String newStatus,
-      ) async {
+  Future<Task> updateTaskStatus(String taskId,
+      String newStatus,) async {
     return updateTask(taskId, {
       'status': newStatus,
     });
@@ -270,6 +267,7 @@ class TaskService {
       throw Exception('Lỗi chia sẻ công việc: $e');
     }
   }
+
   // Chấp nhận công việc được giao.
   Future<void> acceptTask(String taskId) async {
     try {
@@ -313,4 +311,79 @@ class TaskService {
       throw Exception('Lỗi xóa công việc: $e');
     }
   }
+
+  // Thay đổi quyền viewer / editor
+  Future<void> updateSharePermission({
+    required String taskId,
+    required String email,
+    required String permission,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/tasks/$taskId/share-permission'),
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'email': email,
+        'permission': permission,
+      }),
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        data is Map
+            ? data['message'] ?? 'Không thể thay đổi quyền'
+            : 'Không thể thay đổi quyền',
+      );
+    }
+  }
+
+  // Thu hồi quyền truy cập của người được chia sẻ
+  Future<void> revokeShareAccess({
+    required String taskId,
+    required String email,
+  }) async {
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
+
+      print('========== THU HOI QUYEN ==========');
+      print('Task ID: $taskId');
+      print('Email: $normalizedEmail');
+
+      final headers = await _getHeaders();
+
+      final url = Uri.parse(
+        '$baseUrl/api/tasks/$taskId/share',
+      );
+
+      print('URL: $url');
+
+      final response = await http.delete(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          'email': normalizedEmail,
+        }),
+      );
+
+      print('HTTP STATUS: ${response.statusCode}');
+      print('HTTP BODY: ${response.body}');
+      print('==================================');
+
+      final data = _decodeResponse(response);
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          data is Map
+              ? data['message'] ?? 'Không thể thu hồi quyền truy cập'
+              : 'Không thể thu hồi quyền truy cập',
+        );
+      }
+    } catch (e) {
+      print('FLUTTER REVOKE ERROR: $e');
+      rethrow;
+    }
+  }
+
+
 }
